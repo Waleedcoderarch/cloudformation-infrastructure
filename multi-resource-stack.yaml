@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Multi-resource stack (EC2 + Security Group + S3)
+
+Parameters:
+
+  KeyName:
+    Description: Select EC2 KeyPair
+    Type: AWS::EC2::KeyPair::KeyName
+
+  BucketName:
+    Description: Enter a unique S3 bucket name
+    Type: String
+
+Resources:
+
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and HTTP
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  AppEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl start httpd
+          systemctl enable httpd
+          echo "<h1>Multi-resource stack running 🚀</h1>" > /var/www/html/index.html
+
+  AppS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      VersioningConfiguration:
+        Status: Enabled
+
+Outputs:
+
+  EC2PublicIP:
+    Description: EC2 Public IP
+    Value: !GetAtt AppEC2Instance.PublicIp
+
+  WebsiteURL:
+    Description: Website URL
+    Value: !Sub "http://${AppEC2Instance.PublicIp}"
+
+  S3BucketName:
+    Description: Created S3 bucket
+    Value: !Ref AppS3Bucket
